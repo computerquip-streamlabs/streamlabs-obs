@@ -11,13 +11,14 @@ const path = require('path');
 const AWS = require('aws-sdk');
 const ProgressBar = require('progress');
 const yml = require('js-yaml');
+const cp = require('child_process');
 
 /**
  * CONFIGURATION
  */
-const s3Bucket = 'streamlabs-obs';
+const s3Bucket = 'streamlabs-obs-dev';
 const sentryOrg = 'streamlabs-obs';
-const sentryProject = 'streamlabs-obs';
+const sentryProject = 'streamlabs-obs-dev';
 
 
 function info(msg) {
@@ -58,6 +59,73 @@ function checkEnv(varName) {
     error(`Missing environment variable ${varName}`);
     sh.exit(1);
   }
+}
+
+/* We can change the release script to export a function instead.
+ * I already made this into a separate script so I think this is fine */
+async function uploadUpdateFiles(s3_key, s3_skey, new_version, app_dir) {
+  return new Promise((resolve, reject) => {
+    const submodule = cp.fork(
+      'bin/release-uploader.js',
+      [
+        '--access-key', s3_key,
+        '--secret-access-key', s3_skey,
+        '--version', new_version,
+        '--release-dir', app_dir
+      ]
+    );
+
+    submodule.on('close', (code) => {
+      if (code !== 0) {
+        reject(code);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+async function setLatestVersion(s3_key, s3_skey, new_version) {
+  return new Promise((resolve, reject) => {
+    const submodule = cp.fork(
+      'bin/set-latest.js',
+      [
+        '--access-key', s3_key,
+        '--secret-access-key', s3_skey,
+        '--version', new_version
+      ]
+    );
+
+    submodule.on('close', (code) => {
+      if (code !== 0) {
+        reject(code);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+async function setChance(s3_key, s3_skey, new_version, chance) {
+  return new Promise((resolve, reject) => {
+    const submodule = cp.fork(
+      'bin/set-chance.js',
+      [
+        '--access-key', s3_key,
+        '--secret-access-key', s3_skey,
+        '--version', new_version,
+        '--chance', chance
+      ]
+    );
+
+    submodule.on('close', (code) => {
+      if (code !== 0) {
+        reject(code);
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 async function uploadS3File(name, filePath) {
@@ -106,10 +174,11 @@ async function runScript() {
   // for releasing.
   checkEnv('AWS_ACCESS_KEY_ID');
   checkEnv('AWS_SECRET_ACCESS_KEY');
-  checkEnv('CSC_LINK');
-  checkEnv('CSC_KEY_PASSWORD');
   checkEnv('SENTRY_AUTH_TOKEN');
 
+  /* Technically speaking, we allow any number of
+   * channels. Maybe in the future, we allow custom
+   * options here? */
   const isPreview = (await inq.prompt({
     type: 'list',
     name: 'releaseType',
@@ -225,6 +294,13 @@ async function runScript() {
     choices: versionOptions
   })).newVersion;
 
+  const channel = (() => {
+    const components = semver.prerelease(newVersion);
+
+    if (components) return components[0];
+    return 'latest';
+  })();
+
   if (!await confirm(`Are you sure you want to package version ${newVersion}?`)) sh.exit(0);
 
   pjson.version = newVersion;
@@ -242,6 +318,12 @@ async function runScript() {
   info('can continue with the deploy.');
 
   if (!await confirm('Are you ready to deploy?')) sh.exit(0);
+
+  const chance = (await inq.prompt({
+    type: 'input',
+    name: 'chance',
+    message: 'What percentage of the userbase would you like to recieve the update?'
+  })).chance;
 
   info('Committing changes...');
   executeCmd('git add -A');
@@ -284,6 +366,15 @@ async function runScript() {
   info(`Disovered ${installerFileName}`);
 
   info('Uploading publishing artifacts...');
+    /* Use the separate release-uploader script to upload our
+   * win-unpacked content. */
+  await uploadUpdateFiles(
+    process.env['AWS_ACCESS_KEY_ID'],
+    process.env['AWS_SECRET_ACCESS_KEY'],
+    newVersion,
+    path.resolve('dist', 'win-unpacked')
+  );
+
   await uploadS3File(installerFileName, installerFilePath);
   await uploadS3File(channelFileName, channelFilePath);
 
@@ -294,6 +385,22 @@ async function runScript() {
   executeCmd(`git checkout staging`);
   executeCmd(`git merge ${targetBranch}`);
   executeCmd('git push origin HEAD');
+
+  info(`Setting latest version...`);
+
+  await setLatestVersion(
+    process.env['AWS_ACCESS_KEY_ID'],
+    process.env['AWS_SECRET_ACCESS_KEY'],
+    newVersion,
+    '--version-file', `${channel}`
+  );
+
+  await setChance(
+    process.env['AWS_ACCESS_KEY_ID'],
+    process.env['AWS_SECRET_ACCESS_KEY'],
+    newVersion,
+    chance
+  );
 
   info(`Version ${newVersion} released successfully!`);
 }

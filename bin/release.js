@@ -71,7 +71,7 @@ async function uploadUpdateFiles(s3_key, s3_skey, new_version, app_dir) {
         '--access-key', s3_key,
         '--secret-access-key', s3_skey,
         '--version', new_version,
-        '--app-dir', app_dir
+        '--release-dir', app_dir
       ]
     );
 

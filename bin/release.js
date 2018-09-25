@@ -314,7 +314,7 @@ async function runScript() {
 
   const chance = (await inq.prompt({
     type: 'input',
-    name: 'chance'
+    name: 'chance',
     message: 'Chance for update to occur'
   })).chance;
 

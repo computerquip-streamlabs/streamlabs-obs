@@ -66,7 +66,7 @@ function checkEnv(varName) {
 async function uploadUpdateFiles(s3_key, s3_skey, new_version, app_dir) {
   return new Promise((resolve, reject) => {
     const submodule = cp.fork(
-      'release-uploader.js',
+      'bin/release-uploader.js',
       [
         '--access-key', s3_key,
         '--secret-access-key', s3_skey,
@@ -316,7 +316,7 @@ async function runScript() {
     process.env['AWS_ACCESS_KEY_ID'],
     process.env['AWS_SECRET_ACCESS_KEY'],
     newVersion,
-    path.resolve('dist', 'win-unapcked')
+    path.resolve('dist', 'win-unpacked')
   );
 
   await uploadS3File(installerFileName, installerFilePath);

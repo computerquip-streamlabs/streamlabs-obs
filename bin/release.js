@@ -313,7 +313,7 @@ async function runScript() {
   if (!await confirm('Are you ready to deploy?')) sh.exit(0);
 
   const chance = (await inq.prompt({
-    type: input,
+    type: 'input',
     name: 'chance'
     message: 'Chance for update to occur'
   })).chance;

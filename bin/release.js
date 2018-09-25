@@ -67,10 +67,12 @@ async function uploadUpdateFiles(s3_key, s3_skey, new_version, app_dir) {
   return new Promise((resolve, reject) => {
     const submodule = cp.fork(
       'release-uploader.js',
-      '--access-key', s3_key,
-      '--secret-access-key', s3_skey,
-      '--version', new_version,
-      '--app-dir', app_dir
+      [
+        '--access-key', s3_key,
+        '--secret-access-key', s3_skey,
+        '--version', new_version,
+        '--app-dir', app_dir
+      ]
     );
 
     submodule.on('close', (code) => {
@@ -308,6 +310,15 @@ async function runScript() {
   info(`Disovered ${installerFileName}`);
 
   info('Uploading publishing artifacts...');
+    /* Use the separate release-uploader script to upload our
+   * win-unpacked content. */
+  await uploadUpdateFiles(
+    process.env['AWS_ACCESS_KEY_ID'],
+    process.env['AWS_SECRET_ACCESS_KEY'],
+    newVersion,
+    path.resolve('dist', 'win-unapcked')
+  );
+
   await uploadS3File(installerFileName, installerFilePath);
   await uploadS3File(channelFileName, channelFilePath);
 
@@ -318,15 +329,6 @@ async function runScript() {
   executeCmd(`git checkout staging`);
   executeCmd(`git merge ${targetBranch}`);
   executeCmd('git push origin HEAD');
-
-  /* Use the separate release-uploader script to upload our
-   * win-unpacked content. */
-  await uploadUpdateFiles(
-    process.env['AWS_ACCESS_KEY_ID'],
-    process.env['AWS_SECRET_ACCESS_KEY'],
-    newVersion,
-    path.resolve('dist', 'win-unapcked')
-  );
 
   info(`Version ${newVersion} released successfully!`);
 }

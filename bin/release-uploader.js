@@ -133,7 +133,7 @@ async function main() {
   });
 
   if (!validate_args(args))
-    return;
+    return -1;
 
   const bucket = args['s3-bucket'];
   const version = args['version'];
@@ -154,19 +154,19 @@ async function main() {
   /* TODO If the bucket doesn't exist, we should allow creating it. */
   if (!(await s3_bucket_exists(s3_client, bucket))) {
     console.log(`${bucket} doesn't exist`);
-    return;
+    return -2;
   }
 
   if (await s3_dir_exists(s3_client, bucket, version)) {
     console.log(`${version} already exists`);
-    return;
+    return -3;
   }
 
   /* Make sure we can actually write to the bucket by creating the "folder" we want. */
   console.log(`creating S3 key ${version}`);
   if (!(await s3_dir_create(s3_client, bucket, version))) {
     console.log(`failed to create S3 folder object`);
-    return;
+    return -4;
   }
 
   /* Generate a file list describing our release directory */
@@ -212,6 +212,16 @@ async function main() {
   });
 
   await rmdir(tmp_dir);
+  return 0;
 }
 
-main().then(() => { });
+main().then((code) => {
+  if (!code) {
+    process.exit(0);
+  }
+
+  process.exit(code);
+}).catch((error) => {
+  console.log(error);
+  process.exit(-256);
+});

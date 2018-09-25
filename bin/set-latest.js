@@ -53,4 +53,13 @@ async function main()
   return s3_client.upload(version_file_params).promise();
 }
 
-main().then(() => {});
+main().then((code) => {
+  if (code) {
+    code = 0;
+  }
+
+  process.exit(0);
+}).catch((error) => {
+  console.log(error);
+  process.exit(-256);
+});

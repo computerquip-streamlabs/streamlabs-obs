@@ -43,7 +43,7 @@ async function main()
   const chance = args['chance'];
 
   if (!validate_args(args))
-    return;
+    return -1;
 
   const aws_credentials = new aws.Credentials(
     args['access-key'],
@@ -63,12 +63,17 @@ async function main()
     Body: JSON.stringify({ chance })
   };
 
-  return s3_client.upload(version_file_params).promise();
+  await s3_client.upload(version_file_params).promise();
+  return 0;
 }
 
-main().then(() => {
-  process.exit(0);
+main().then((code) => {
+  if (!code) {
+    code = 0;
+  }
+
+  process.exit(code);
 }).catch((error) => {
   console.log(error);
-  process.exit(1);
+  process.exit(-256);
 });

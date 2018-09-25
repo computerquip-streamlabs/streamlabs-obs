@@ -85,6 +85,49 @@ async function uploadUpdateFiles(s3_key, s3_skey, new_version, app_dir) {
   });
 }
 
+async function setLatestVersion(s3_key, s3_skey, new_version) {
+  return new Promise((resolve, reject) => {
+    const submodule = cp.fork(
+      'bin/set-latest.js',
+      [
+        '--access-key', s3_key,
+        '--secret-access-key', s3_skey,
+        '--version', new_version
+      ]
+    );
+
+    submodule.on('close', (code) => {
+      if (code !== 0) {
+        reject(code);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+async function setChance(s3_key, s3_skey, new_version, chance) {
+  return new Promise((resolve, reject) => {
+    const submodule = cp.fork(
+      'bin/set-chance.js',
+      [
+        '--access-key', s3_key,
+        '--secret-access-key', s3_skey,
+        '--version', new_version,
+        '--chance', chance
+      ]
+    );
+
+    submodule.on('close', (code) => {
+      if (code !== 0) {
+        reject(code);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 async function uploadS3File(name, filePath) {
   info(`Starting upload of ${name}...`);
 
@@ -269,6 +312,12 @@ async function runScript() {
 
   if (!await confirm('Are you ready to deploy?')) sh.exit(0);
 
+  const chance = (await inq.prompt({
+    type: input,
+    name: 'chance'
+    message: 'Chance for update to occur'
+  })).chance;
+
   info('Committing changes...');
   executeCmd('git add -A');
   executeCmd(`git commit -m "Release version ${newVersion}"`);
@@ -329,6 +378,21 @@ async function runScript() {
   executeCmd(`git checkout staging`);
   executeCmd(`git merge ${targetBranch}`);
   executeCmd('git push origin HEAD');
+
+  info(`Setting latest version...`);
+
+  await setLatestVersion(
+    process.env['AWS_ACCESS_KEY_ID'],
+    process.env['AWS_SECRET_ACCESS_KEY'],
+    newVersion
+  );
+
+  await setChance(
+    process.env['AWS_ACCESS_KEY_ID'],
+    process.env['AWS_SECRET_ACCESS_KEY'],
+    newVersion,
+    chance
+  );
 
   info(`Version ${newVersion} released successfully!`);
 }

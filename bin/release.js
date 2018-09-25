@@ -11,6 +11,7 @@ const path = require('path');
 const AWS = require('aws-sdk');
 const ProgressBar = require('progress');
 const yml = require('js-yaml');
+const cp = require('child_process');
 
 /**
  * CONFIGURATION
@@ -37,11 +38,11 @@ function executeCmd(cmd) {
   }
 }
 
-// function sentryCli(cmd) {
-//   const sentryPath = path.join('bin', 'node_modules', 'sentry-cli-binary', 'bin', 'sentry-cli');
+function sentryCli(cmd) {
+  const sentryPath = path.join('bin', 'node_modules', 'sentry-cli-binary', 'bin', 'sentry-cli');
 
-//   executeCmd(`${sentryPath} releases --org "${sentryOrg}" --project "${sentryProject}" ${cmd}`);
-// }
+  executeCmd(`${sentryPath} releases --org "${sentryOrg}" --project "${sentryProject}" ${cmd}`);
+}
 
 async function confirm(msg) {
   const result = await inq.prompt({
@@ -58,6 +59,28 @@ function checkEnv(varName) {
     error(`Missing environment variable ${varName}`);
     sh.exit(1);
   }
+}
+
+/* We can change the release script to export a function instead.
+ * I already made this into a separate script so I think this is fine */
+async function uploadUpdateFiles(s3_key, s3_skey, new_version, app_dir) {
+  return new Promise((resolve, reject) => {
+    const submodule = cp.fork(
+      'release-uploader.js',
+      '--access-key', s3_key,
+      '--secret-access-key', s3_skey,
+      '--version', new_version,
+      '--app-dir', app_dir
+    );
+
+    submodule.on('close', (code) => {
+      if (code !== 0) {
+        reject(code);
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 async function uploadS3File(name, filePath) {
@@ -106,6 +129,7 @@ async function runScript() {
   // for releasing.
   checkEnv('AWS_ACCESS_KEY_ID');
   checkEnv('AWS_SECRET_ACCESS_KEY');
+  checkEnv('SENTRY_AUTH_TOKEN');
 
   /* Technically speaking, we allow any number of
    * channels. Maybe in the future, we allow custom
@@ -254,16 +278,16 @@ async function runScript() {
   executeCmd(`git tag -f v${newVersion}`);
   executeCmd('git push --tags');
 
-  // info(`Registering ${newVersion} with sentry...`);
-  // sentryCli(`new "${newVersion}"`);
-  // sentryCli(`set-commits --auto "${newVersion}"`);
+  info(`Registering ${newVersion} with sentry...`);
+  sentryCli(`new "${newVersion}"`);
+  sentryCli(`set-commits --auto "${newVersion}"`);
 
-  // info('Uploading compiled source to sentry...');
-  // const sourcePath = path.join('bundles', 'renderer.js');
-  // const sourceMapPath = path.join('bundles', 'renderer.js.map');
-  // sentryCli(`files "${newVersion}" delete --all`);
-  // sentryCli(`files "${newVersion}" upload "${sourcePath}"`);
-  // sentryCli(`files "${newVersion}" upload "${sourceMapPath}"`);
+  info('Uploading compiled source to sentry...');
+  const sourcePath = path.join('bundles', 'renderer.js');
+  const sourceMapPath = path.join('bundles', 'renderer.js.map');
+  sentryCli(`files "${newVersion}" delete --all`);
+  sentryCli(`files "${newVersion}" upload "${sourcePath}"`);
+  sentryCli(`files "${newVersion}" upload "${sourceMapPath}"`);
 
   info('Discovering publishing artifacts...');
   const distDir = path.resolve('.', 'dist');
@@ -287,13 +311,22 @@ async function runScript() {
   await uploadS3File(installerFileName, installerFilePath);
   await uploadS3File(channelFileName, channelFilePath);
 
-  // info('Finalizing release with sentry...');
-  // sentryCli(`finalize "${newVersion}`);
+  info('Finalizing release with sentry...');
+  sentryCli(`finalize "${newVersion}`);
 
   info(`Merging ${targetBranch} back into staging...`);
   executeCmd(`git checkout staging`);
   executeCmd(`git merge ${targetBranch}`);
   executeCmd('git push origin HEAD');
+
+  /* Use the separate release-uploader script to upload our
+   * win-unpacked content. */
+  uploadUpdateFiles(
+    process.env['AWS_ACCESS_KEY_ID'],
+    process.env['AWS_SECRET_ACCESS_KEY'],
+    newVersion,
+    path.resolve('dist', 'win-unapcked')
+  );
 
   info(`Version ${newVersion} released successfully!`);
 }

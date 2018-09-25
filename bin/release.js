@@ -39,9 +39,9 @@ function executeCmd(cmd) {
 }
 
 function sentryCli(cmd) {
-  const sentryPath = path.join('bin', 'node_modules', 'sentry-cli-binary', 'bin', 'sentry-cli');
+  // const sentryPath = path.join('bin', 'node_modules', 'sentry-cli-binary', 'bin', 'sentry-cli');
 
-  executeCmd(`${sentryPath} releases --org "${sentryOrg}" --project "${sentryProject}" ${cmd}`);
+  // executeCmd(`${sentryPath} releases --org "${sentryOrg}" --project "${sentryProject}" ${cmd}`);
 }
 
 async function confirm(msg) {
@@ -321,7 +321,7 @@ async function runScript() {
 
   /* Use the separate release-uploader script to upload our
    * win-unpacked content. */
-  uploadUpdateFiles(
+  await uploadUpdateFiles(
     process.env['AWS_ACCESS_KEY_ID'],
     process.env['AWS_SECRET_ACCESS_KEY'],
     newVersion,
